@@ -1,0 +1,136 @@
+CREATE TABLE grants (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  title text NOT NULL,
+  description text,
+  amount text,
+
+  deadline date,
+  location_eligible text[],         -- e.g., {'California', 'USA'}
+  target_group text[],              -- e.g., {'students', 'nonprofits'}
+  sectors text[],                   -- e.g., {'STEM', 'AI'}
+  eligibility_criteria text[],      -- e.g., {'BIPOC', 'low-income'}
+
+  source_url text,
+
+  created_at timestamp with time zone DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now()
+);
+
+
+INSERT INTO grants (
+  title, description, amount, deadline,
+  location_eligible, target_group, sectors, eligibility_criteria,
+  source_url
+)
+VALUES
+(
+  'Women in STEM Fellowship',
+  'A fellowship for female-identifying undergraduate students in STEM majors.',
+  '$5,000',
+  '2025-08-31',
+  ARRAY['USA'],
+  ARRAY['students'],
+  ARRAY['STEM', 'Engineering'],
+  ARRAY['female', 'undergraduate', 'STEM'],
+  'https://example.com/women-in-stem'
+),
+(
+  'California Arts Recovery Grant',
+  'Grant for small arts nonprofits in California affected by the pandemic.',
+  '$10,000',
+  '2025-09-15',
+  ARRAY['California'],
+  ARRAY['nonprofits'],
+  ARRAY['arts', 'community'],
+  ARRAY['COVID-19', 'arts'],
+  'https://example.com/ca-arts-grant'
+),
+(
+  'First-Gen Scholars Grant',
+  'Financial support for first-generation college students pursuing any major.',
+  '$3,500',
+  '2025-10-01',
+  ARRAY['USA'],
+  ARRAY['students'],
+  ARRAY['education'],
+  ARRAY['first-generation', 'undergraduate'],
+  'https://example.com/first-gen-scholars'
+),
+(
+  'Startup Catalyst Microgrant',
+  'Seed funding for early-stage founders building impactful tech solutions.',
+  '$7,000',
+  '2025-08-20',
+  ARRAY['USA', 'Remote'],
+  ARRAY['founders'],
+  ARRAY['technology', 'startups'],
+  ARRAY['underrepresented', 'tech'],
+  'https://example.com/startup-catalyst'
+),
+(
+  'Latinx in Leadership Fellowship',
+  'A fellowship for Latinx-identifying college students showing leadership potential.',
+  '$4,000',
+  '2025-09-05',
+  ARRAY['USA'],
+  ARRAY['students'],
+  ARRAY['education', 'civic leadership'],
+  ARRAY['Latinx', 'leadership'],
+  'https://example.com/latinx-leadership'
+),
+(
+  'Indigenous Innovation Grant',
+  'Funding for Indigenous-led initiatives in sustainability and tech.',
+  '$12,000',
+  '2025-11-15',
+  ARRAY['USA', 'Canada'],
+  ARRAY['nonprofits', 'founders'],
+  ARRAY['sustainability', 'technology'],
+  ARRAY['Indigenous'],
+  'https://example.com/indigenous-innovation'
+),
+(
+  'Black Tech Builders Grant',
+  'Support for Black-identifying entrepreneurs working on software products.',
+  '$8,500',
+  '2025-09-30',
+  ARRAY['USA'],
+  ARRAY['founders'],
+  ARRAY['technology', 'software'],
+  ARRAY['Black', 'entrepreneurship'],
+  'https://example.com/black-tech-builders'
+),
+(
+  'Remote Learning Research Fund',
+  'Grant for students conducting research on improving remote education access.',
+  '$6,000',
+  '2025-10-10',
+  ARRAY['USA'],
+  ARRAY['students'],
+  ARRAY['education', 'research'],
+  ARRAY['remote learning', 'low-income'],
+  'https://example.com/remote-edu-research'
+),
+(
+  'Youth Civic Engagement Mini-Grant',
+  'Funding for youth-led community projects focused on civic engagement.',
+  '$2,000',
+  '2025-08-25',
+  ARRAY['USA'],
+  ARRAY['students'],
+  ARRAY['civic engagement', 'community'],
+  ARRAY['youth', 'volunteer'],
+  'https://example.com/youth-civic'
+),
+(
+  'Disabled Founders Fund',
+  'Grant supporting disabled entrepreneurs launching inclusive products.',
+  '$9,000',
+  '2025-09-20',
+  ARRAY['USA', 'Remote'],
+  ARRAY['founders'],
+  ARRAY['accessibility', 'technology'],
+  ARRAY['disabled', 'accessibility'],
+  'https://example.com/disabled-founders'
+);
