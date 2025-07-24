@@ -35,6 +35,31 @@ def parse_deadline(text):
             return None
     return None
 
+def extract_description(soup):
+    # 1. Primary method: exact test ID
+    desc_div = soup.select_one("div[data-testid='scholarship-description']")
+    if desc_div:
+        paragraphs = desc_div.find_all("p")
+        if paragraphs:
+            return "\n\n".join(p.get_text(strip=True) for p in paragraphs)
+        return desc_div.get_text(strip=True)
+
+    # 2. Fallback: generic description class
+    desc_div = soup.find("div", class_=lambda c: c and "description" in c)
+    if desc_div:
+        paragraphs = desc_div.find_all("p")
+        if paragraphs:
+            return "\n\n".join(p.get_text(strip=True) for p in paragraphs)
+        return desc_div.get_text(strip=True)
+
+    # 3. Last resort: first 2–3 <p> tags
+    fallback_paragraphs = soup.find_all("p")
+    if fallback_paragraphs:
+        return "\n\n".join(p.get_text(strip=True) for p in fallback_paragraphs[:3])
+
+    return "No description available"
+
+
 
 def infer_tags(text, tag_list):
     return [tag for tag in tag_list if tag.lower() in text.lower()]
@@ -91,10 +116,7 @@ def scrape_bold_page(page=1):
                 continue
 
             # 📝 Description
-            desc_tag = sub_soup.select_one("div[data-testid='scholarship-description']")
-            if not desc_tag:
-                desc_tag = sub_soup.find("p")
-            description = desc_tag.get_text(strip=True) if desc_tag else "No description available"
+            description = extract_description(sub_soup)
 
             # 💰 Amount
             amount_tag = sub_soup.find(string=re.compile(r"\$\d[\d,]*"))
