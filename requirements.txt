@@ -4,3 +4,6 @@ datetime
 supabase
 pydantic
 dotenv
+bs4
+requests
+dateutil
