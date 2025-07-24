@@ -62,7 +62,13 @@ def extract_description(soup):
 
 
 def infer_tags(text, tag_list):
-    return [tag for tag in tag_list if tag.lower() in text.lower()]
+    matches = []
+    for tag in tag_list:
+        # Create word-boundary regex for the tag, e.g. \bAI\b
+        pattern = r"\b" + re.escape(tag) + r"\b"
+        if re.search(pattern, text, re.IGNORECASE):
+            matches.append(tag)
+    return matches
 
 # ---------- Scraper ----------
 
