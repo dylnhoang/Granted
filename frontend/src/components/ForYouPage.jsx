@@ -185,7 +185,11 @@ function ForYouPage() {
                 <div className="text-sm text-gray-500">Award: <span className="font-semibold">{selectedGrant.amount}</span></div>
               </div>
               <div className="text-gray-800 mb-6">
-                {selectedGrant.description}
+                {(selectedGrant.description || "").split(/\r?\n/).map((para, idx) =>
+                  para.trim() ? (
+                    <p key={idx} className="mb-3 whitespace-pre-line">{para}</p>
+                  ) : null
+                )}
               </div>
               <div className="mt-auto">
                 <a
