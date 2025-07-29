@@ -15,6 +15,60 @@ supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 BASE_URL = "https://www.unigo.com/scholarships/our-scholarships"
 
+def extract_official_rules(soup):
+    """
+    Extract and format the official rules section from scholarship pages.
+    This is often the most structured and important part of the description.
+    """
+    rules_sections = []
+    seen_sections = set()  # Track unique sections to avoid repetition
+    
+    # Look for sections that contain "OFFICIAL" or "RULES"
+    for tag in soup.find_all(['div', 'section', 'article']):
+        text = tag.get_text(strip=True)
+        if text and ('OFFICIAL' in text.upper() or 'RULES' in text.upper() or 'ELIGIBILITY' in text.upper()):
+            # Extract structured content from this section
+            for element in tag.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'li']):
+                element_text = element.get_text(strip=True)
+                if element_text and len(element_text) > 10:
+                    # Filter out UI elements
+                    ui_indicators = [
+                        'apply', 'apply now', 'save', 'continue', 'sign up', 'sign in',
+                        'my education level', 'high school', 'college', 'graduate',
+                        'application status', 'not applied', 'view scholarships',
+                        'opens in new tab', 'continue with google', 'continue with email',
+                        'award amount', 'application deadline', 'see past winners',
+                        'get started', 'sign up for access', 'millions of scholarships',
+                        'education', 'due', 'award:', 'to', 'scholarships', 'our scholarships',
+                        'apply for the', 'submit an online', 'submit online', 'online written response',
+                        'written response to', 'response to the question', 'to the question', 'the question',
+                        'question:', 'words or less', 'or less', 'less'
+                    ]
+                    
+                    has_ui_content = any(indicator.lower() in element_text.lower() for indicator in ui_indicators)
+                    
+                    if not has_ui_content:
+                        # Check for scholarship-specific content
+                        scholarship_keywords = ['scholarship', 'award', 'essay', 'eligibility', 'requirements', 'deadline', 'winner', 'rules', 'sponsor', 'official', 'general', 'selection', 'judging', 'must', 'applicants', 'residents', 'legal', 'united states', 'district of columbia', 'years of age', 'notified', 'email', 'phone', 'march', 'december', 'january', 'february', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november']
+                        scholarship_count = sum(1 for keyword in scholarship_keywords if keyword.lower() in element_text.lower())
+                        
+                        if scholarship_count > 0 and len(element_text) > 20:
+                            # Create a normalized version for deduplication
+                            normalized_text = re.sub(r'\s+', ' ', element_text.strip())
+                            if normalized_text not in seen_sections:
+                                seen_sections.add(normalized_text)
+                                # Format based on element type
+                                if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                                    rules_sections.append(f"\n{element_text.upper()}\n")
+                                elif element.name == 'li':
+                                    rules_sections.append(f"• {element_text}")
+                                else:
+                                    rules_sections.append(element_text)
+    
+    if rules_sections:
+        return '\n\n'.join(rules_sections)
+    return None
+
 def scrape_unigo():
     print("🚀 Launching Playwright Unigo scraper...")
     results = []
@@ -38,14 +92,23 @@ def scrape_unigo():
             )
             print(f"📦 Found {len(links)} scholarship links")
 
+            # Normalize links to remove query parameters and track duplicates
+            normalized_links = []
             seen = set()
-            for i, link in enumerate(links):
-                if link in seen:
-                    continue
-                seen.add(link)
+            
+            for link in links:
+                # Remove query parameters to normalize the URL
+                normalized_link = link.split('?')[0] if '?' in link else link
+                
+                if normalized_link not in seen:
+                    seen.add(normalized_link)
+                    normalized_links.append(link)  # Keep original link for scraping
+            
+            print(f"📦 After deduplication: {len(normalized_links)} unique scholarship links")
 
+            for i, link in enumerate(normalized_links):
                 try:
-                    print(f"🔗 Scraping [{i+1}/{len(links)}]: {link}")
+                    print(f"🔗 Scraping [{i+1}/{len(normalized_links)}]: {link}")
                     
                     # Skip non-scholarship pages early
                     skip_pages = [
@@ -147,155 +210,106 @@ def scrape_unigo():
                         else:
                             continue
 
-                    # Initialize description variable
-                    description = ""
-
                     # Get full page content for description and fallback parsing
                     try:
-                        # Try to get main content area - focus on scholarship-specific content
-                        content_selectors = [
-                            ".scholarship-description",
-                            ".description",
-                            ".scholarship-content",
-                            ".award-description",
-                            ".main-content",
-                            ".content",
-                            "main",
-                            ".scholarship-details",
-                            "article",
-                            ".page-content"
-                        ]
+                        # First, try to find the main scholarship description content
+                        # Look for specific content areas that contain the actual scholarship information
+                        page_content = page.content()
+                        soup = BeautifulSoup(page_content, 'html.parser')
                         
-                        for selector in content_selectors:
-                            try:
-                                elements = page.locator(selector).all()
-                                for element in elements:
-                                    if element.is_visible():
-                                        # Use innerHTML to preserve formatting, then convert to text with breaks
-                                        html_content = element.inner_html()
-                                        if html_content and len(html_content) > 100:
-                                            # Parse HTML to preserve structure
-                                            soup = BeautifulSoup(html_content, 'html.parser')
-                                            
-                                            # Remove unwanted elements more aggressively
-                                            for unwanted in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'button', 'form', 'input', 'select', 'option', 'label']):
-                                                unwanted.decompose()
-                                            
-                                            # Convert to text while preserving paragraph breaks
-                                            paragraphs = []
-                                            for tag in soup.find_all(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li']):
-                                                text = tag.get_text(strip=True)
-                                                if text and len(text) > 10:
-                                                    # Filter out UI and navigation text
-                                                    ui_indicators = [
-                                                        'apply', 'apply now', 'save', 'continue', 'sign up', 'sign in',
-                                                        'my education level', 'high school', 'college', 'graduate',
-                                                        'application status', 'not applied', 'view scholarships',
-                                                        'opens in new tab', 'continue with google', 'continue with email',
-                                                        'award amount', 'application deadline', 'see past winners',
-                                                        'get started', 'sign up for access', 'millions of scholarships'
-                                                    ]
-                                                    
-                                                    # Skip if text contains too many UI indicators
-                                                    ui_count = sum(1 for indicator in ui_indicators if indicator.lower() in text.lower())
-                                                    if ui_count < 2:  # Allow some UI text but not too much
-                                                        paragraphs.append(text)
-                                            
-                                            if paragraphs:
-                                                description = '\n\n'.join(paragraphs)
-                                                # Filter out navigation and generic content
-                                                if (len(description) > 100 and 
-                                                    not description.startswith('<!DOCTYPE') and
-                                                    not description.startswith('FIND SCHOLARSHIPS') and
-                                                    'HIGH SCHOOL SCHOLARSHIPS' not in description and
-                                                    'COLLEGE SCHOLARSHIPS' not in description and
-                                                    'UNIGO SCHOLARSHIPS' not in description):
-                                                    
-                                                    # Clean up UI elements
-                                                    ui_elements = [
-                                                        'ScholarshipApply withEssayVideoNEW',
-                                                        'Apply withEssayVideoNEW',
-                                                        'Apply withEssay',
-                                                        'Apply withVideo',
-                                                        'NEW',
-                                                        'Award Amount',
-                                                        'Application deadline',
-                                                        'See Past Winners',
-                                                        'Get started',
-                                                        'Sign Up For Access',
-                                                        'Continue With Google',
-                                                        'Continue with Email',
-                                                        'My Education Level',
-                                                        'High School Senior',
-                                                        'High School Junior',
-                                                        'High School Sophomore',
-                                                        'High School Freshman',
-                                                        'College Student',
-                                                        'Graduate Student',
-                                                        'Application Status',
-                                                        'Not Applied',
-                                                        'Apply Now',
-                                                        'Save',
-                                                        'View Scholarships',
-                                                        'Opens in new tab',
-                                                        'Millions of Scholarships'
-                                                    ]
-                                                    
-                                                    for element in ui_elements:
-                                                        description = description.replace(element, '')
-                                                    
-                                                    # Clean up excessive whitespace and line breaks
-                                                    description = re.sub(r'\n\s*\n\s*\n', '\n\n', description)
-                                                    description = re.sub(r' +', ' ', description)
-                                                    description = description.strip()
-                                                    
-                                                    # Only use if we have substantial content after cleaning
-                                                    if len(description) > 200:
-                                                        break
-                                if description and len(description) > 200:
-                                    break
-                            except:
-                                continue
+                        # Remove all UI elements first
+                        for unwanted in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'button', 'form', 'input', 'select', 'option', 'label', 'a']):
+                            unwanted.decompose()
                         
-                        # If still no good description, try a more targeted approach
-                        if not description or len(description) < 200:
-                            try:
-                                # Look for content that contains scholarship-specific keywords
-                                page_content = page.content()
-                                soup = BeautifulSoup(page_content, 'html.parser')
+                        # Look for the main scholarship description - focus on paragraphs that contain actual scholarship info
+                        scholarship_paragraphs = []
+                        seen_paragraphs = set()  # Track unique paragraphs to avoid repetition
+                        
+                        # Find paragraphs that contain scholarship-specific content
+                        for p in soup.find_all('p'):
+                            text = p.get_text(strip=True)
+                            if text and len(text) > 30:
+                                # Check if this looks like actual scholarship content (not UI)
+                                scholarship_keywords = ['scholarship', 'award', 'essay', 'eligibility', 'requirements', 'deadline', 'winner', 'rules', 'sponsor', 'official', 'general', 'selection', 'judging', 'must', 'applicants', 'residents', 'legal', 'united states', 'district of columbia', 'years of age', 'notified', 'email', 'phone', 'march', 'december', 'january', 'february', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'being funny', 'smart people', 'rich people', 'important to be happy', 'would you rather', 'help increase your education']
                                 
-                                # Remove all UI elements
-                                for unwanted in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'button', 'form', 'input', 'select', 'option', 'label', 'a']):
-                                    unwanted.decompose()
+                                # Skip if it's clearly UI content
+                                ui_indicators = ['apply now', 'save', 'continue', 'sign up', 'get started', 'view scholarships', 'award amount', 'application deadline', 'not applied', 'scholarship contests', 'sweepstakes', 'opens in new tab', 'continue with google', 'continue with email', 'my education level', 'application status']
+                                has_ui = any(ui in text.lower() for ui in ui_indicators)
                                 
-                                # Find paragraphs that contain scholarship content
-                                scholarship_paragraphs = []
-                                for p in soup.find_all('p'):
-                                    text = p.get_text(strip=True)
-                                    if text and len(text) > 50:
-                                        # Check if this looks like scholarship content
-                                        scholarship_words = ['scholarship', 'award', 'essay', 'eligibility', 'requirements', 'deadline', 'winner', 'rules', 'sponsor']
-                                        ui_words = ['apply now', 'save', 'continue', 'sign up', 'my education level', 'application status', 'view scholarships', 'opens in new tab']
-                                        
-                                        scholarship_count = sum(1 for word in scholarship_words if word.lower() in text.lower())
-                                        ui_count = sum(1 for word in ui_words if word.lower() in text.lower())
-                                        
-                                        if scholarship_count > 0 and ui_count < 2:
+                                if not has_ui:
+                                    scholarship_count = sum(1 for keyword in scholarship_keywords if keyword.lower() in text.lower())
+                                    if scholarship_count > 0:
+                                        # Create a normalized version for deduplication (remove extra whitespace)
+                                        normalized_text = re.sub(r'\s+', ' ', text.strip())
+                                        if normalized_text not in seen_paragraphs:
+                                            seen_paragraphs.add(normalized_text)
                                             scholarship_paragraphs.append(text)
-                                
-                                if scholarship_paragraphs:
-                                    description = '\n\n'.join(scholarship_paragraphs)
-                                    # Clean up
-                                    description = re.sub(r'\n\s*\n\s*\n', '\n\n', description)
-                                    description = re.sub(r' +', ' ', description)
-                                    description = description.strip()
-                                    
-                                    if len(description) > 3000:
-                                        description = description[:3000] + "..."
-                                        
-                            except Exception as e:
-                                print(f"⚠️ Error in targeted extraction: {e}")
-                                description = ""
+                        
+                        # If we found good paragraphs, use them
+                        if scholarship_paragraphs:
+                            description = '\n\n'.join(scholarship_paragraphs)
+                            print(f"📝 Using paragraph-based extraction")
+                        else:
+                            # Fallback: try to extract from specific content areas
+                            content_selectors = [
+                                ".scholarship-description",
+                                ".description",
+                                ".scholarship-content",
+                                ".award-description",
+                                ".main-content",
+                                ".content",
+                                "main",
+                                ".scholarship-details",
+                                "article",
+                                ".page-content"
+                            ]
+                            
+                            for selector in content_selectors:
+                                try:
+                                    elements = page.locator(selector).all()
+                                    for element in elements:
+                                        if element.is_visible():
+                                            html_content = element.inner_html()
+                                            if html_content and len(html_content) > 100:
+                                                soup = BeautifulSoup(html_content, 'html.parser')
+                                                
+                                                # Remove unwanted elements
+                                                for unwanted in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'button', 'form', 'input', 'select', 'option', 'label']):
+                                                    unwanted.decompose()
+                                                
+                                                # Extract only paragraphs with substantial content
+                                                paragraphs = []
+                                                seen_paragraphs = set()  # Track unique paragraphs
+                                                
+                                                for p in soup.find_all('p'):
+                                                    text = p.get_text(strip=True)
+                                                    if text and len(text) > 30:
+                                                        # Check for scholarship content
+                                                        scholarship_keywords = ['scholarship', 'award', 'essay', 'eligibility', 'requirements', 'deadline', 'winner', 'rules', 'sponsor', 'official', 'general', 'selection', 'judging', 'must', 'applicants', 'residents', 'legal', 'united states', 'district of columbia', 'years of age', 'notified', 'email', 'phone', 'march', 'december', 'january', 'february', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'being funny', 'smart people', 'rich people', 'important to be happy', 'would you rather', 'help increase your education']
+                                                        scholarship_count = sum(1 for keyword in scholarship_keywords if keyword.lower() in text.lower())
+                                                        
+                                                        if scholarship_count > 0:
+                                                            # Create a normalized version for deduplication
+                                                            normalized_text = re.sub(r'\s+', ' ', text.strip())
+                                                            if normalized_text not in seen_paragraphs:
+                                                                seen_paragraphs.add(normalized_text)
+                                                                paragraphs.append(text)
+                                                
+                                                if paragraphs:
+                                                    description = '\n\n'.join(paragraphs)
+                                                    print(f"📝 Using selector-based extraction: {selector}")
+                                                    break
+                                    if description:
+                                        break
+                                except:
+                                    continue
+                            
+                            # If still no description, try the official rules approach
+                            if not description:
+                                official_rules = extract_official_rules(soup)
+                                if official_rules and len(official_rules) > 200:
+                                    description = official_rules
+                                    print(f"📋 Using official rules section for description")
                             
                     except Exception as e:
                         print(f"⚠️ Error getting description: {e}")
@@ -336,6 +350,30 @@ def scrape_unigo():
                         if title_amount_match:
                             amount_text = title_amount_match.group(0)
                             print(f"💰 Found amount in title: {amount_text}")
+                    
+                    # Also look for amounts in the page content
+                    if not amount_text:
+                        try:
+                            page_content = page.content()
+                            # Look for common amount patterns in the content
+                            amount_patterns = [
+                                r'\$\d+(?:,\d{3})*(?:K|k|M|m)?',
+                                r'\$\d+(?:,\d{3})*',
+                                r'\d+(?:,\d{3})*\s*(?:dollars?|USD)',
+                                r'\d+(?:,\d{3})*\s*(?:K|k|M|m)'
+                            ]
+                            
+                            for pattern in amount_patterns:
+                                matches = re.findall(pattern, page_content, re.IGNORECASE)
+                                for match in matches:
+                                    if '$' in match or any(suffix in match.upper() for suffix in ['K', 'M', 'DOLLAR', 'USD']):
+                                        amount_text = match
+                                        print(f"💰 Found amount in content: {amount_text}")
+                                        break
+                                if amount_text:
+                                    break
+                        except:
+                            pass
                     
                     # Parse values with better error handling
                     amount = parse_amount(description or amount_text) if (description or amount_text) else None
@@ -390,10 +428,22 @@ def scrape_unigo():
                                     except:
                                         pass
                     
-                    # Special case for "Unigo $10K Scholarship"
+                    # Special case for "Unigo $10K Scholarship" and similar patterns
                     if title and "unigo" in title.lower() and "10k" in title.lower() and (not amount or amount == "$10"):
                         amount = "$10,000"
                         print(f"💰 Fixed Unigo $10K Scholarship amount: {amount}")
+                    
+                    # Additional special cases for common patterns
+                    if title and not amount:
+                        # Look for any number followed by K in the title
+                        k_match = re.search(r'(\d+)K', title, re.IGNORECASE)
+                        if k_match:
+                            try:
+                                num = int(k_match.group(1))
+                                amount = f"${num * 1000:,}"
+                                print(f"💰 Extracted {num}K from title: {amount}")
+                            except:
+                                pass
 
                     # Extract deadline with better logic
                     deadline_selectors = [
@@ -422,8 +472,18 @@ def scrape_unigo():
                         except:
                             continue
 
-                    # Parse deadline
+                    # Parse deadline from both description and extracted text
                     deadline = parse_deadline(description or deadline_text) if (description or deadline_text) else None
+                    
+                    # If still no deadline, try to extract from the entire page content
+                    if not deadline:
+                        try:
+                            page_content = page.content()
+                            deadline = parse_deadline(page_content)
+                            if deadline:
+                                print(f"📅 Found deadline in page content: {deadline}")
+                        except:
+                            pass
 
                     # Better tag inference
                     sectors = infer_tags(description, ["STEM", "AI", "Engineering", "Healthcare", "Business", "Arts", "Education"])
@@ -479,6 +539,85 @@ def scrape_unigo():
                     if not amount:
                         print(f"⚠️ No amount found, but continuing: {link}")
                         amount = "Varies"  # Set a default value
+                    
+                    # Clean up the description to remove any remaining UI artifacts
+                    if description:
+                        # Simple cleanup - remove obvious UI elements
+                        ui_artifacts = [
+                            'Education', 'Due', 'Award:', 'Apply Now', 'Save', 'View Scholarships',
+                            'Opens in new tab', 'Millions of Scholarships', 'Get started',
+                            'Sign Up For Access', 'Continue With Google', 'Continue with Email',
+                            'My Education Level', 'High School Senior', 'High School Junior', 
+                            'High School Sophomore', 'High School Freshman', 'College Student', 
+                            'Graduate Student', 'Application Status', 'Not Applied',
+                            'AWARD AMOUNT', 'APPLICATION DEADLINE', 'GET STARTED',
+                            'scholarship contests', 'sweepstakes'
+                        ]
+                        for artifact in ui_artifacts:
+                            description = description.replace(artifact, '')
+                        
+                        # Clean up pipe separators and convert to proper formatting
+                        if '|' in description:
+                            # Split by pipe and format as bullet points
+                            lines = description.split('\n')
+                            cleaned_lines = []
+                            for line in lines:
+                                if '|' in line:
+                                    parts = [part.strip() for part in line.split('|') if part.strip()]
+                                    for part in parts:
+                                        if part and len(part) > 5:
+                                            cleaned_lines.append(f"• {part}")
+                                else:
+                                    cleaned_lines.append(line)
+                            description = '\n'.join(cleaned_lines)
+                        
+                        # Basic whitespace cleanup
+                        description = re.sub(r'\n\s*\n\s*\n', '\n\n', description)
+                        description = re.sub(r' +', ' ', description)
+                        description = description.strip()
+                        
+                        # Ensure we still have meaningful content after cleaning
+                        if len(description) < 50:
+                            print(f"⚠️ Description too short after cleaning ({len(description)} chars): {link}")
+                            continue
+                        
+                        # Add some final formatting improvements
+                        # Ensure headers are properly spaced
+                        description = re.sub(r'\n([A-Z\s]+)\n', r'\n\n\1\n\n', description)
+                        
+                        # Ensure bullet points are properly formatted
+                        description = re.sub(r'\n•\s*', r'\n• ', description)
+                        
+                        # Clean up any remaining excessive whitespace
+                        description = re.sub(r'\n\s*\n\s*\n', '\n\n', description)
+                        description = description.strip()
+                        
+                        # Final check - remove any lines that are just UI elements
+                        lines = description.split('\n')
+                        cleaned_lines = []
+                        for line in lines:
+                            line = line.strip()
+                            if line and len(line) > 5:
+                                # Check if this line is just UI content
+                                ui_check = any(ui in line.lower() for ui in ['apply', 'save', 'continue', 'sign up', 'get started', 'view scholarships', 'award amount', 'application deadline', 'not applied', 'scholarship contests', 'sweepstakes'])
+                                if not ui_check:
+                                    # Clean up pipe separators and replace with proper formatting
+                                    if '|' in line:
+                                        # Split by pipe and format as bullet points
+                                        parts = [part.strip() for part in line.split('|') if part.strip()]
+                                        if len(parts) > 1:
+                                            for part in parts:
+                                                if part and len(part) > 5:
+                                                    cleaned_lines.append(f"• {part}")
+                                        else:
+                                            cleaned_lines.append(line)
+                                    else:
+                                        cleaned_lines.append(line)
+                        
+                        description = '\n'.join(cleaned_lines)
+                        
+                        # Remove any remaining navigation-style bullet points
+                        description = re.sub(r'•\s*(scholarship contests|sweepstakes|unigo 10k scholarship|education matters scholarship|superpower scholarship|i have a dream scholarship|zombie apocalypse scholarship|flavor of the month scholarship|make me laugh scholarship|shout it out scholarship|top ten list scholarship|sweet and simple scholarship|fifth month scholarship|do-over scholarship)\s*\n?', '', description, flags=re.IGNORECASE)
 
                     results.append({
                         "title": title,
