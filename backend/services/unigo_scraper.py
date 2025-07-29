@@ -225,25 +225,81 @@ def scrape_unigo():
                         scholarship_paragraphs = []
                         seen_paragraphs = set()  # Track unique paragraphs to avoid repetition
                         
-                        # Find paragraphs that contain scholarship-specific content
-                        for p in soup.find_all('p'):
-                            text = p.get_text(strip=True)
-                            if text and len(text) > 30:
-                                # Check if this looks like actual scholarship content (not UI)
-                                scholarship_keywords = ['scholarship', 'award', 'essay', 'eligibility', 'requirements', 'deadline', 'winner', 'rules', 'sponsor', 'official', 'general', 'selection', 'judging', 'must', 'applicants', 'residents', 'legal', 'united states', 'district of columbia', 'years of age', 'notified', 'email', 'phone', 'march', 'december', 'january', 'february', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'being funny', 'smart people', 'rich people', 'important to be happy', 'would you rather', 'help increase your education']
+                        # Extract content in the proper order as it appears on the page
+                        # First, find all content elements and their positions
+                        content_elements = []
+                        
+                        # First, find all strong tags specifically for contextual headers
+                        for strong in soup.find_all('strong'):
+                            text = strong.get_text(strip=True)
+                            if text and len(text) > 5:
+                                # Check if it's a contextual header
+                                contextual_patterns = [
+                                    r'applicants must:?',
+                                    r'submit.*online.*written.*response.*question:?',
+                                    r'eligibility.*requirements:?',
+                                    r'how.*to.*apply:?',
+                                    r'application.*requirements:?',
+                                    r'essay.*prompt:?',
+                                    r'question:?',
+                                    r'winner.*notification:?'
+                                ]
                                 
-                                # Skip if it's clearly UI content
-                                ui_indicators = ['apply now', 'save', 'continue', 'sign up', 'get started', 'view scholarships', 'award amount', 'application deadline', 'not applied', 'scholarship contests', 'sweepstakes', 'opens in new tab', 'continue with google', 'continue with email', 'my education level', 'application status']
-                                has_ui = any(ui in text.lower() for ui in ui_indicators)
+                                has_context = any(re.search(pattern, text.lower()) for pattern in contextual_patterns)
                                 
-                                if not has_ui:
-                                    scholarship_count = sum(1 for keyword in scholarship_keywords if keyword.lower() in text.lower())
-                                    if scholarship_count > 0:
-                                        # Create a normalized version for deduplication (remove extra whitespace)
-                                        normalized_text = re.sub(r'\s+', ' ', text.strip())
-                                        if normalized_text not in seen_paragraphs:
-                                            seen_paragraphs.add(normalized_text)
-                                            scholarship_paragraphs.append(text)
+                                if has_context and len(text) < 100:  # Reasonable length for headers
+                                    # Get the element's position in the document
+                                    position = len(str(soup)[:str(soup).find(str(strong))])
+                                    content_elements.append((position, strong, text, 'contextual_header'))
+                        
+                        # Then find all other relevant elements
+                        for element in soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'b', 'span', 'div', 'li']):
+                            text = element.get_text(strip=True)
+                            if text and len(text) > 5:
+                                # Get the element's position in the document
+                                position = len(str(soup)[:str(soup).find(str(element))])
+                                content_elements.append((position, element, text, 'normal'))
+                        
+                        # Sort by position to maintain original order
+                        content_elements.sort(key=lambda x: x[0])
+                        
+                        # Process elements in order
+                        for position, element, text, element_type in content_elements:
+                            # Skip if already seen
+                            normalized_text = re.sub(r'\s+', ' ', text.strip())
+                            if normalized_text in seen_paragraphs:
+                                continue
+                            
+                            # Check for scholarship content
+                            scholarship_keywords = ['scholarship', 'award', 'essay', 'eligibility', 'requirements', 'deadline', 'winner', 'rules', 'sponsor', 'official', 'general', 'selection', 'judging', 'must', 'applicants', 'residents', 'legal', 'united states', 'district of columbia', 'years of age', 'notified', 'email', 'phone', 'march', 'december', 'january', 'february', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'being funny', 'smart people', 'rich people', 'important to be happy', 'would you rather', 'help increase your education', 'enrolled', 'accredited', 'postsecondary', 'institution', 'higher education', 'letter to', 'explaining why', 'high five', 'original']
+                            
+                            # Skip UI elements
+                            ui_indicators = ['apply now', 'save', 'continue', 'sign up', 'get started', 'view scholarships', 'award amount', 'application deadline', 'not applied', 'scholarship contests', 'sweepstakes', 'opens in new tab', 'continue with google', 'continue with email', 'my education level', 'application status', 'apply with', 'essay', 'video', 'new']
+                            has_ui = any(ui in text.lower() for ui in ui_indicators)
+                            
+                            # Also skip navigation-style elements
+                            if len(text) < 50 and any(nav in text.lower() for nav in ['unigo', 'scholarship', 'education matters', 'superpower', 'i have a dream', 'zombie apocalypse', 'flavor of the month', 'make me laugh', 'shout it out', 'top ten list', 'sweet and simple', 'fifth month', 'do over']):
+                                has_ui = True
+                            
+                            # Special handling for contextual headers - they should always be included
+                            if element_type == 'contextual_header':
+                                seen_paragraphs.add(normalized_text)
+                                scholarship_paragraphs.append(f"\n{text.upper()}\n")
+                            elif not has_ui:
+                                scholarship_count = sum(1 for keyword in scholarship_keywords if keyword.lower() in text.lower())
+                                
+                                if scholarship_count > 0 and len(text) > 20:
+                                    seen_paragraphs.add(normalized_text)
+                                    
+                                    # Format based on element type and content
+                                    if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                                        # Only format as header if it's actually a header element
+                                        scholarship_paragraphs.append(text)
+                                    elif element.name == 'li':
+                                        scholarship_paragraphs.append(f"• {text}")
+                                    else:
+                                        # For other elements, just add the text as-is
+                                        scholarship_paragraphs.append(text)
                         
                         # If we found good paragraphs, use them
                         if scholarship_paragraphs:
@@ -277,22 +333,81 @@ def scrape_unigo():
                                                 for unwanted in soup(['script', 'style', 'nav', 'header', 'footer', 'aside', 'button', 'form', 'input', 'select', 'option', 'label']):
                                                     unwanted.decompose()
                                                 
-                                                # Extract only paragraphs with substantial content
+                                                # Extract content in the proper order as it appears on the page
                                                 paragraphs = []
                                                 seen_paragraphs = set()  # Track unique paragraphs
+                                                content_elements = []
                                                 
-                                                for p in soup.find_all('p'):
-                                                    text = p.get_text(strip=True)
-                                                    if text and len(text) > 30:
-                                                        # Check for scholarship content
-                                                        scholarship_keywords = ['scholarship', 'award', 'essay', 'eligibility', 'requirements', 'deadline', 'winner', 'rules', 'sponsor', 'official', 'general', 'selection', 'judging', 'must', 'applicants', 'residents', 'legal', 'united states', 'district of columbia', 'years of age', 'notified', 'email', 'phone', 'march', 'december', 'january', 'february', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'being funny', 'smart people', 'rich people', 'important to be happy', 'would you rather', 'help increase your education']
+                                                # First, find all strong tags specifically for contextual headers
+                                                for strong in soup.find_all('strong'):
+                                                    text = strong.get_text(strip=True)
+                                                    if text and len(text) > 5:
+                                                        # Check if it's a contextual header
+                                                        contextual_patterns = [
+                                                            r'applicants must:?',
+                                                            r'submit.*online.*written.*response.*question:?',
+                                                            r'eligibility.*requirements:?',
+                                                            r'how.*to.*apply:?',
+                                                            r'application.*requirements:?',
+                                                            r'essay.*prompt:?',
+                                                            r'question:?',
+                                                            r'winner.*notification:?'
+                                                        ]
+                                                        
+                                                        has_context = any(re.search(pattern, text.lower()) for pattern in contextual_patterns)
+                                                        
+                                                        if has_context and len(text) < 100:  # Reasonable length for headers
+                                                            # Get the element's position in the document
+                                                            position = len(str(soup)[:str(soup).find(str(strong))])
+                                                            content_elements.append((position, strong, text, 'contextual_header'))
+                                                
+                                                # Then find all other relevant elements
+                                                for element in soup.find_all(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'b', 'span', 'div', 'li']):
+                                                    text = element.get_text(strip=True)
+                                                    if text and len(text) > 5:
+                                                        # Get the element's position in the document
+                                                        position = len(str(soup)[:str(soup).find(str(element))])
+                                                        content_elements.append((position, element, text, 'normal'))
+                                                
+                                                # Sort by position to maintain original order
+                                                content_elements.sort(key=lambda x: x[0])
+                                                
+                                                # Process elements in order
+                                                for position, element, text, element_type in content_elements:
+                                                    # Skip if already seen
+                                                    normalized_text = re.sub(r'\s+', ' ', text.strip())
+                                                    if normalized_text in seen_paragraphs:
+                                                        continue
+                                                    
+                                                    # Check for scholarship content
+                                                    scholarship_keywords = ['scholarship', 'award', 'essay', 'eligibility', 'requirements', 'deadline', 'winner', 'rules', 'sponsor', 'official', 'general', 'selection', 'judging', 'must', 'applicants', 'residents', 'legal', 'united states', 'district of columbia', 'years of age', 'notified', 'email', 'phone', 'march', 'december', 'january', 'february', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'being funny', 'smart people', 'rich people', 'important to be happy', 'would you rather', 'help increase your education', 'enrolled', 'accredited', 'postsecondary', 'institution', 'higher education', 'letter to', 'explaining why', 'high five', 'original']
+                                                    
+                                                    # Skip UI elements
+                                                    ui_indicators = ['apply now', 'save', 'continue', 'sign up', 'get started', 'view scholarships', 'award amount', 'application deadline', 'not applied', 'scholarship contests', 'sweepstakes', 'opens in new tab', 'continue with google', 'continue with email', 'my education level', 'application status', 'apply with', 'essay', 'video', 'new']
+                                                    has_ui = any(ui in text.lower() for ui in ui_indicators)
+                                                    
+                                                    # Also skip navigation-style elements
+                                                    if len(text) < 50 and any(nav in text.lower() for nav in ['unigo', 'scholarship', 'education matters', 'superpower', 'i have a dream', 'zombie apocalypse', 'flavor of the month', 'make me laugh', 'shout it out', 'top ten list', 'sweet and simple', 'fifth month', 'do over']):
+                                                        has_ui = True
+                                                    
+                                                    # Special handling for contextual headers - they should always be included
+                                                    if element_type == 'contextual_header':
+                                                        seen_paragraphs.add(normalized_text)
+                                                        paragraphs.append(f"\n{text.upper()}\n")
+                                                    elif not has_ui:
                                                         scholarship_count = sum(1 for keyword in scholarship_keywords if keyword.lower() in text.lower())
                                                         
-                                                        if scholarship_count > 0:
-                                                            # Create a normalized version for deduplication
-                                                            normalized_text = re.sub(r'\s+', ' ', text.strip())
-                                                            if normalized_text not in seen_paragraphs:
-                                                                seen_paragraphs.add(normalized_text)
+                                                        if scholarship_count > 0 and len(text) > 20:
+                                                            seen_paragraphs.add(normalized_text)
+                                                            
+                                                            # Format based on element type and content
+                                                            if element.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                                                                # Only format as header if it's actually a header element
+                                                                paragraphs.append(text)
+                                                            elif element.name == 'li':
+                                                                paragraphs.append(f"• {text}")
+                                                            else:
+                                                                # For other elements, just add the text as-is
                                                                 paragraphs.append(text)
                                                 
                                                 if paragraphs:
