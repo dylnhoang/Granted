@@ -284,7 +284,7 @@ def scrape_unigo():
                             # Special handling for contextual headers - they should always be included
                             if element_type == 'contextual_header':
                                 seen_paragraphs.add(normalized_text)
-                                scholarship_paragraphs.append(f"\n{text.upper()}\n")
+                                scholarship_paragraphs.append(f"\n<strong>{text.upper()}</strong>\n")
                             elif not has_ui:
                                 scholarship_count = sum(1 for keyword in scholarship_keywords if keyword.lower() in text.lower())
                                 
@@ -393,7 +393,7 @@ def scrape_unigo():
                                                     # Special handling for contextual headers - they should always be included
                                                     if element_type == 'contextual_header':
                                                         seen_paragraphs.add(normalized_text)
-                                                        paragraphs.append(f"\n{text.upper()}\n")
+                                                        paragraphs.append(f"\n<strong>{text.upper()}</strong>\n")
                                                     elif not has_ui:
                                                         scholarship_count = sum(1 for keyword in scholarship_keywords if keyword.lower() in text.lower())
                                                         

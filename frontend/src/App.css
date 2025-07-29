@@ -36,3 +36,14 @@
     transform: rotate(360deg);
   }
 }
+
+/* Ensure strong tags render as bold */
+strong {
+  font-weight: bold;
+}
+
+/* Style for contextual headers in grant descriptions */
+.grant-description strong {
+  font-weight: 700;
+  color: #1f2937;
+}

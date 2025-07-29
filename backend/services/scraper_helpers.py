@@ -32,7 +32,9 @@ def parse_amount(text):
         r"\$\d+(?:\s+thousand|\s+million)",
         # Amounts in parentheses or brackets
         r"\(\$\d[\d,]*(?:\s*(?:to|-)\s*\$\d[\d,]*)?\)",
-        r"\[\$\d[\d,]*(?:\s*(?:to|-)\s*\$\d[\d,]*)?\]"
+        r"\[\$\d[\d,]*(?:\s*(?:to|-)\s*\$\d[\d,]*)?\]",
+        # Just numbers that might be amounts (fallback)
+        r"\$\d+"
     ]
     
     for pattern in patterns:
@@ -42,6 +44,23 @@ def parse_amount(text):
             # Clean up the amount
             amount = re.sub(r'[()\[\]]', '', amount)  # Remove brackets/parentheses
             amount = re.sub(r'\s+', ' ', amount)      # Normalize whitespace
+            
+            # Handle K/M suffixes
+            if re.search(r'[Kk]$', amount):
+                # Convert K to thousands
+                try:
+                    num = float(re.search(r'\d+(?:\.\d+)?', amount).group())
+                    return f"${int(num * 1000):,}"
+                except:
+                    pass
+            elif re.search(r'[Mm]$', amount):
+                # Convert M to millions
+                try:
+                    num = float(re.search(r'\d+(?:\.\d+)?', amount).group())
+                    return f"${int(num * 1000000):,}"
+                except:
+                    pass
+            
             return amount
     
     return None
@@ -49,12 +68,34 @@ def parse_amount(text):
 def parse_deadline(text):
     if not text:
         return None
-    match = re.search(r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}", text)
-    if match:
-        try:
-            return dateparser.parse(match.group(0)).date().isoformat()
-        except:
-            return None
+    
+    # Try multiple date formats
+    patterns = [
+        # ISO date format: 2023-01-01
+        r"\d{4}-\d{2}-\d{2}",
+        # Full month name: January 1, 2023
+        r"(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}",
+        # Abbreviated month: Jan 1, 2023
+        r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}",
+        # MM/DD/YYYY format
+        r"\d{1,2}/\d{1,2}/\d{4}",
+        # MM-DD-YYYY format
+        r"\d{1,2}-\d{1,2}-\d{4}"
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            try:
+                date_str = match.group(0)
+                # Handle ISO format directly
+                if re.match(r"\d{4}-\d{2}-\d{2}", date_str):
+                    return date_str
+                else:
+                    return dateparser.parse(date_str).date().isoformat()
+            except:
+                continue
+    
     return None
 
 def extract_description(soup):
