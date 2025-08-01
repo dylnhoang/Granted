@@ -5,7 +5,7 @@ from supabase import create_client
 from dotenv import load_dotenv
 import os
 
-from backend.services.score_grant import score_grant
+from ..services.score_grant import score_grant
 
 load_dotenv()
 
