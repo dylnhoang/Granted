@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { supabase } from '../supabaseClient';
+import { useAuth } from '../contexts/AuthContext';
 import { 
   UserIcon, 
   AcademicCapIcon, 
@@ -13,9 +13,9 @@ import {
 } from '@heroicons/react/24/outline';
 
 const ProfilePage = () => {
+  const { user, profile, updateProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
   const [profileData, setProfileData] = useState({
     fullName: '',
     email: '',
@@ -27,7 +27,7 @@ const ProfilePage = () => {
     profilePhoto: null
   });
 
-  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm();
+  const { register, handleSubmit, setValue, formState: { errors } } = useForm();
 
   // Available options
   const states = [
@@ -81,61 +81,31 @@ const ProfilePage = () => {
   ];
 
   useEffect(() => {
-    fetchUserProfile();
-  }, []);
+    if (profile) {
+      setProfileData({
+        fullName: profile.full_name || '',
+        email: user?.email || '',
+        gpa: profile.gpa || '',
+        major: profile.major || '',
+        state: profile.state || '',
+        interests: profile.interests || [],
+        demographicTags: profile.demographic_tags || [],
+        profilePhoto: profile.profile_photo
+      });
 
-  const fetchUserProfile = async () => {
-    try {
-      setIsLoading(true);
-      
-      // Get current user
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      
-      if (currentUser) {
-        setUser(currentUser);
-        
-        // Fetch profile data from your profiles table
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', currentUser.id)
-          .single();
-
-        if (error && error.code !== 'PGRST116') {
-          console.error('Error fetching profile:', error);
-        }
-
-        if (profile) {
-          setProfileData({
-            fullName: profile.full_name || '',
-            email: currentUser.email || '',
-            gpa: profile.gpa || '',
-            major: profile.major || '',
-            state: profile.state || '',
-            interests: profile.interests || [],
-            demographicTags: profile.demographic_tags || [],
-            profilePhoto: profile.profile_photo
-          });
-
-          // Set form values
-          setValue('fullName', profile.full_name || '');
-          setValue('gpa', profile.gpa || '');
-          setValue('major', profile.major || '');
-          setValue('state', profile.state || '');
-        } else {
-          // Set default values for new users
-          setProfileData(prev => ({
-            ...prev,
-            email: currentUser.email || ''
-          }));
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-    } finally {
-      setIsLoading(false);
+      // Set form values
+      setValue('fullName', profile.full_name || '');
+      setValue('gpa', profile.gpa || '');
+      setValue('major', profile.major || '');
+      setValue('state', profile.state || '');
+    } else if (user) {
+      // Set default values for new users
+      setProfileData(prev => ({
+        ...prev,
+        email: user.email || ''
+      }));
     }
-  };
+  }, [profile, user, setValue]);
 
   const onSubmit = async (data) => {
     try {
@@ -143,32 +113,25 @@ const ProfilePage = () => {
       
       if (!user) return;
 
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          full_name: data.fullName,
-          email: user.email,
-          gpa: parseFloat(data.gpa),
-          major: data.major,
-          state: data.state,
-          interests: profileData.interests,
-          demographic_tags: profileData.demographicTags,
-          updated_at: new Date()
-        });
-
-      if (error) {
-        console.error('Error updating profile:', error);
-        return;
-      }
-
-      setProfileData(prev => ({
-        ...prev,
-        fullName: data.fullName,
-        gpa: data.gpa,
+      const updatedProfile = await updateProfile({
+        full_name: data.fullName,
+        email: user.email,
+        gpa: parseFloat(data.gpa),
         major: data.major,
-        state: data.state
-      }));
+        state: data.state,
+        interests: profileData.interests,
+        demographic_tags: profileData.demographicTags,
+      });
+
+      if (updatedProfile) {
+        setProfileData(prev => ({
+          ...prev,
+          fullName: data.fullName,
+          gpa: data.gpa,
+          major: data.major,
+          state: data.state
+        }));
+      }
 
       setIsEditing(false);
     } catch (error) {
@@ -219,10 +182,13 @@ const ProfilePage = () => {
       .slice(0, 2);
   };
 
-  if (isLoading) {
+  if (!user) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
       </div>
     );
   }

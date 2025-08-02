@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
+import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../supabaseClient";
+import WelcomeBanner from "./WelcomeBanner";
 
 const categories = ["All", "STEM", "Arts", "First-Gen", "BIPOC", "Women", "Community", "Leadership"];
 const deadlines = ["All", "This Week", "This Month", "Flexible"];
@@ -18,6 +20,7 @@ function toTitleCase(str) {
 }
 
 function ForYouPage() {
+  const { user } = useAuth();
   const [category, setCategory] = useState("All");
   const [deadline, setDeadline] = useState("All");
   const [amount, setAmount] = useState("All");
@@ -28,14 +31,28 @@ function ForYouPage() {
   useEffect(() => {
     async function fetchGrants() {
       setLoading(true);
-      const { data, error } = await supabase.from("grants").select("*");
-      if (error) {
+      try {
+        // Fetch grants from your existing Supabase table
+        const { data, error } = await supabase
+          .from('grants')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching grants:', error);
+          setGrants([]);
+        } else {
+          setGrants(data || []);
+          if (data && data.length > 0) {
+            setSelectedGrant(data[0]);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching grants:', error);
         setGrants([]);
-      } else {
-        setGrants(data);
-        setSelectedGrant((data || [])[0]);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     fetchGrants();
   }, []);
@@ -60,8 +77,11 @@ function ForYouPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
+      {/* Welcome Banner */}
+      <WelcomeBanner />
+      
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-primary to-primary py-8 px-4 sm:px-8 mb-4">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 py-8 px-4 sm:px-8 mb-4">
         <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2">
           GrantFinder
         </h1>
