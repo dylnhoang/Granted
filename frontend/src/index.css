@@ -8,6 +8,11 @@
   --color-primary-hover: #1d4ed8;
 }
 
+/* Apply 90% zoom effect to the entire app */
+html {
+  font-size: 90%;
+}
+
 /* Custom utility classes */
 .text-primary {
   color: var(--color-primary);
