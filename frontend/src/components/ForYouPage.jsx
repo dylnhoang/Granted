@@ -3,7 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { supabase } from "../supabaseClient";
 import WelcomeBanner from "./WelcomeBanner";
 
-const categories = ["All", "STEM", "Arts", "First-Gen", "BIPOC", "Women", "Community", "Leadership"];
+const categories = ["All", "STEM", "Arts", "first-gen", "BIPOC", "women", "low-income background", "LGBTQ+"];
 const deadlines = ["All", "This Week", "This Month", "Flexible"];
 const amounts = ["All", "<$500", "$500–$2,000", "$2,000+"];
 
@@ -42,6 +42,7 @@ function ForYouPage() {
           console.error('Error fetching grants:', error);
           setGrants([]);
         } else {
+          console.log('Fetched grants:', data);
           setGrants(data || []);
           if (data && data.length > 0) {
             setSelectedGrant(data[0]);
@@ -59,7 +60,13 @@ function ForYouPage() {
 
   // Defensive filter logic
   const filteredGrants = (grants || []).filter((grant) => {
-    const categoryMatch = category === "All" || (grant.sectors || []).includes(category);
+    // Check both sectors and eligibility_criteria for category matching
+    const categoryMatch = category === "All" || 
+      (grant.sectors || []).includes(category) || 
+      (grant.eligibility_criteria || []).includes(category);
+    
+    console.log(`Grant: ${grant.title}, Category: ${category}, Sectors: ${grant.sectors}, Eligibility: ${grant.eligibility_criteria}, Match: ${categoryMatch}`);
+    
     const deadlineMatch =
       deadline === "All" || grant.deadline === deadline;
     let amountMatch = true;
@@ -99,7 +106,7 @@ function ForYouPage() {
               onChange={(e) => setCategory(e.target.value)}
             >
               {(categories || []).map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
+                <option key={cat} value={cat}>{toTitleCase(cat)}</option>
               ))}
             </select>
           </div>
@@ -150,7 +157,7 @@ function ForYouPage() {
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="font-bold text-gray-900">{toTitleCase(grant.title)}</span>
+                    <span className="font-bold text-gray-900">{(grant.title)}</span>
                     <span className="bg-primary/20 text-primary text-xs font-semibold px-2 py-1 rounded-full">
                       {/* You can calculate match % or show a static badge if needed */}
                       Match
@@ -181,13 +188,13 @@ function ForYouPage() {
           {selectedGrant ? (
             <>
               <div className="flex items-center justify-between mb-2">
-                <h2 className="font-bold text-2xl text-gray-900">{toTitleCase(selectedGrant.title)}</h2>
+                <h2 className="font-bold text-2xl text-gray-900">{(selectedGrant.title)}</h2>
                 <span className="bg-primary/20 text-primary text-sm font-semibold px-3 py-1 rounded-full">
                   {/* You can calculate match % or show a static badge if needed */}
                   Match
                 </span>
               </div>
-              <div className="text-md text-gray-700 mb-1">{toTitleCase(selectedGrant.organization)}</div>
+              <div className="text-md text-gray-700 mb-1">{(selectedGrant.organization)}</div>
               <div className="flex flex-wrap gap-2 mb-3">
                 {(selectedGrant?.sectors || []).map((tag) => (
                   <span key={tag} className="bg-gray-100 text-gray-700 text-xs px-2 py-1 rounded-full">
