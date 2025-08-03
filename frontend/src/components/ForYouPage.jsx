@@ -9,13 +9,35 @@ const amounts = ["All", "<$500", "$500–$2,000", "$2,000+"];
 
 function toTitleCase(str) {
   if (!str) return "";
+  
+  // Special cases that should remain unchanged
+  const specialCases = {
+    "all": "All",
+    "stem": "STEM", 
+    "bipoc": "BIPOC",
+    "lgbtq+": "LGBTQ+"
+  };
+  
+  // Check if the entire string is a special case
+  if (specialCases[str.toLowerCase()]) {
+    return specialCases[str.toLowerCase()];
+  }
+  
   return str
     .split(" ")
-    .map(word =>
-      word === word.toUpperCase() && word.length > 1
-        ? word // keep acronyms like STEM, USA, etc.
-        : word.charAt(0).toUpperCase() + word.substr(1).toLowerCase()
-    )
+    .map(word => {
+      const lowerWord = word.toLowerCase();
+      // Check if this word is a special case
+      if (specialCases[lowerWord]) {
+        return specialCases[lowerWord];
+      }
+      // Handle acronyms (all caps words longer than 1 character)
+      if (word === word.toUpperCase() && word.length > 1) {
+        return word; // keep acronyms like STEM, USA, etc.
+      }
+      // Regular title case
+      return word.charAt(0).toUpperCase() + word.substr(1).toLowerCase();
+    })
     .join(" ");
 }
 
