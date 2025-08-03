@@ -9,13 +9,16 @@ import {
   PencilIcon,
   CheckIcon,
   XMarkIcon,
-  PhotoIcon
+  PhotoIcon,
+  ExclamationTriangleIcon,
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 
 const ProfilePage = () => {
   const { user, profile, updateProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [notification, setNotification] = useState({ type: '', message: '' });
   const [profileData, setProfileData] = useState({
     fullName: '',
     email: '',
@@ -26,6 +29,16 @@ const ProfilePage = () => {
     demographicTags: [],
     profilePhoto: null
   });
+
+  // Clear notification after 5 seconds
+  useEffect(() => {
+    if (notification.message) {
+      const timer = setTimeout(() => {
+        setNotification({ type: '', message: '' });
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [notification.message]);
 
   const { register, handleSubmit, setValue, formState: { errors } } = useForm();
 
@@ -110,8 +123,23 @@ const ProfilePage = () => {
   const onSubmit = async (data) => {
     try {
       setIsLoading(true);
+      setNotification({ type: '', message: '' });
       
-      if (!user) return;
+      if (!user) {
+        setNotification({ type: 'error', message: 'User not authenticated' });
+        return;
+      }
+
+      // Log the data being sent to Supabase for debugging
+      console.log('Saving profile data:', {
+        full_name: data.fullName,
+        email: user.email,
+        gpa: parseFloat(data.gpa),
+        major: data.major,
+        state: data.state,
+        interests: profileData.interests,
+        demographic_tags: profileData.demographicTags,
+      });
 
       const updatedProfile = await updateProfile({
         full_name: data.fullName,
@@ -123,19 +151,28 @@ const ProfilePage = () => {
         demographic_tags: profileData.demographicTags,
       });
 
+      console.log('Updated profile response:', updatedProfile);
+
       if (updatedProfile) {
+        // Update local state with all the saved data, including interests and demographic tags
         setProfileData(prev => ({
           ...prev,
           fullName: data.fullName,
           gpa: data.gpa,
           major: data.major,
-          state: data.state
+          state: data.state,
+          interests: updatedProfile.interests || prev.interests,
+          demographicTags: updatedProfile.demographic_tags || prev.demographicTags
         }));
+        setNotification({ type: 'success', message: 'Profile updated successfully!' });
+        setIsEditing(false);
       }
-
-      setIsEditing(false);
     } catch (error) {
       console.error('Error saving profile:', error);
+      setNotification({ 
+        type: 'error', 
+        message: error.message || 'Failed to update profile. Please try again.' 
+      });
     } finally {
       setIsLoading(false);
     }
@@ -196,6 +233,22 @@ const ProfilePage = () => {
   return (
     <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Notification */}
+        {notification.message && (
+          <div className={`mb-6 p-4 rounded-md flex items-center space-x-3 ${
+            notification.type === 'success' 
+              ? 'bg-green-50 border border-green-200 text-green-800' 
+              : 'bg-red-50 border border-red-200 text-red-800'
+          }`}>
+            {notification.type === 'success' ? (
+              <CheckCircleIcon className="w-5 h-5 text-green-500" />
+            ) : (
+              <ExclamationTriangleIcon className="w-5 h-5 text-red-500" />
+            )}
+            <span className="text-sm font-medium">{notification.message}</span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Profile</h1>
@@ -241,6 +294,13 @@ const ProfilePage = () => {
                 <button
                   type="button"
                   className="absolute -bottom-1 -right-1 bg-primary text-white rounded-full p-1 hover:bg-primary/80 transition-colors"
+                  onClick={() => {
+                    // TODO: Implement photo upload functionality
+                    setNotification({ 
+                      type: 'error', 
+                      message: 'Photo upload feature coming soon!' 
+                    });
+                  }}
                 >
                   <PhotoIcon className="w-4 h-4" />
                 </button>
@@ -383,19 +443,32 @@ const ProfilePage = () => {
             <div className="flex items-center space-x-2 mb-6">
               <TagIcon className="w-5 h-5 text-primary" />
               <h3 className="text-lg font-semibold text-gray-900">Interests</h3>
+              {!isEditing && (
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">Read-only</span>
+              )}
             </div>
-            <p className="text-sm text-gray-600 mb-4">Select areas that interest you (this helps us match you with relevant scholarships)</p>
+            <p className="text-sm text-gray-600 mb-4">
+              {isEditing 
+                ? "Select areas that interest you (this helps us match you with relevant scholarships)"
+                : "Your selected interests for scholarship matching"
+              }
+            </p>
             
             <div className="flex flex-wrap gap-2">
               {interestOptions.map(interest => (
                 <button
                   key={interest}
                   type="button"
-                  onClick={() => toggleInterest(interest)}
+                  onClick={isEditing ? () => toggleInterest(interest) : undefined}
+                  disabled={!isEditing}
                   className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                     profileData.interests.includes(interest)
                       ? 'bg-primary text-white'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-gray-100 text-gray-700'
+                  } ${
+                    isEditing 
+                      ? 'hover:bg-gray-200 cursor-pointer' 
+                      : 'cursor-default opacity-75'
                   }`}
                 >
                   {interest}
@@ -409,19 +482,32 @@ const ProfilePage = () => {
             <div className="flex items-center space-x-2 mb-6">
               <UserIcon className="w-5 h-5 text-primary" />
               <h3 className="text-lg font-semibold text-gray-900">Demographic Information (Optional)</h3>
+              {!isEditing && (
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">Read-only</span>
+              )}
             </div>
-            <p className="text-sm text-gray-600 mb-4">This information helps us find scholarships that match your background</p>
+            <p className="text-sm text-gray-600 mb-4">
+              {isEditing 
+                ? "This information helps us find scholarships that match your background"
+                : "Your demographic information for targeted scholarships"
+              }
+            </p>
             
             <div className="flex flex-wrap gap-2">
               {demographicOptions.map(tag => (
                 <button
                   key={tag}
                   type="button"
-                  onClick={() => toggleDemographicTag(tag)}
+                  onClick={isEditing ? () => toggleDemographicTag(tag) : undefined}
+                  disabled={!isEditing}
                   className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
                     profileData.demographicTags.includes(tag)
                       ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                      : 'bg-gray-100 text-gray-700'
+                  } ${
+                    isEditing 
+                      ? 'hover:bg-gray-200 cursor-pointer' 
+                      : 'cursor-default opacity-75'
                   }`}
                 >
                   {tag}

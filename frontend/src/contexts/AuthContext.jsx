@@ -77,14 +77,33 @@ export const AuthProvider = ({ children }) => {
     if (!user) return;
 
     try {
-      const { data, error } = await supabase
+      console.log('AuthContext: Updating profile with:', updates);
+      
+      // First, try to update the existing profile
+      let { data, error } = await supabase
         .from('profiles')
         .update(updates)
         .eq('id', user.id)
         .select()
         .single();
 
+      // If no rows were updated, the profile doesn't exist, so create it
+      if (error && error.code === 'PGRST116') {
+        console.log('AuthContext: Profile not found, creating new one');
+        const { data: newData, error: insertError } = await supabase
+          .from('profiles')
+          .insert([{ id: user.id, ...updates }])
+          .select()
+          .single();
+
+        if (insertError) throw insertError;
+        console.log('AuthContext: New profile created:', newData);
+        setProfile(newData);
+        return newData;
+      }
+
       if (error) throw error;
+      console.log('AuthContext: Profile updated successfully:', data);
       setProfile(data);
       return data;
     } catch (error) {
